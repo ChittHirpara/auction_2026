@@ -409,6 +409,80 @@ export function confirmSale(studentId: string, vanguardId: string, price: number
 }
 
 /**
+ * Mark current student as UNSOLD.
+ * Removes from queue, marks as unsold.
+ * Resets timer.
+ * NO money exchanged.
+ */
+export function markAsUnsold(studentId: string): PersistedState {
+    const state = loadState();
+    if (!state) throw new Error('No auction state');
+
+    // Validate: student must be queue[0]
+    if (state.queue[0] !== studentId) {
+        throw new Error('Can only mark current student (queue[0]) as unsold');
+    }
+
+    const student = state.students[studentId];
+    if (!student || student.status !== 'available') {
+        throw new Error('Student not available');
+    }
+
+    // Apply mutation
+    state.students[studentId] = {
+        ...student,
+        status: 'unsold',
+        soldTo: undefined,
+        soldPrice: undefined,
+    };
+
+    // Remove from queue
+    state.queue = state.queue.slice(1);
+
+    // Reset timer
+    state.timer = {
+        startedAt: null,
+        duration: TIMER_DURATION,
+        pausedRemaining: null,
+    };
+
+    saveState(state);
+    return state;
+}
+
+/**
+ * Return an UNSOLD student to the queue (available).
+ * Adds to END of queue.
+ */
+export function returnFromUnsold(studentId: string): PersistedState {
+    const state = loadState();
+    if (!state) throw new Error('No auction state');
+
+    const student = state.students[studentId];
+    if (!student || student.status !== 'unsold') {
+        throw new Error('Student must be unsold to return');
+    }
+
+    state.students[studentId] = {
+        ...student,
+        status: 'available',
+    };
+
+    // Add to FRONT of queue (Make active immediately)
+    state.queue = [studentId, ...state.queue];
+
+    // Reset timer
+    state.timer = {
+        startedAt: null,
+        duration: TIMER_DURATION,
+        pausedRemaining: null,
+    };
+
+    saveState(state);
+    return state;
+}
+
+/**
  * Skip current student - moves queue[0] to end of queue.
  * Only callable from main screen.
  */

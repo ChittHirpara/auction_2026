@@ -1,4 +1,4 @@
-import { Gavel, User, Hash, ChevronRight, AlertCircle, Play, RotateCcw } from 'lucide-react';
+import { Gavel, User, Hash, ChevronRight, AlertCircle, Play, RotateCcw, Ban } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -45,6 +45,7 @@ interface AuctionStageProps {
   onStartTimer: () => void;
   onPauseTimer: () => void;
   onResetTimer: () => void;
+  onUnsold: (studentId: string) => void;
 }
 
 const BASE_PRICE = 0.25;
@@ -66,6 +67,7 @@ export function AuctionStage({
   onStartTimer,
   onPauseTimer,
   onResetTimer,
+  onUnsold,
 }: AuctionStageProps) {
   const [bidAmount, setBidAmount] = useState(BASE_PRICE);
   const [selectedVanguard, setSelectedVanguard] = useState<string>('');
@@ -74,15 +76,30 @@ export function AuctionStage({
   const [soldPhase, setSoldPhase] = useState<'lock' | 'declare' | 'release'>('lock');
   const [soldDetails, setSoldDetails] = useState<{ name: string; vanguard: string; price: number; color: string } | null>(null);
 
+  // UNSOLD ANIMATION STATE
+  const [isExitingUnsold, setIsExitingUnsold] = useState(false);
+
+  const handleMarkUnsold = () => {
+    if (!currentStudent) return;
+    setIsExitingUnsold(true);
+    // God-tier safe animation: wait for slide down then trigger data update
+    setTimeout(() => {
+      onUnsold(currentStudent.id);
+      setIsExitingUnsold(false);
+      setBidAmount(BASE_PRICE);
+      setSelectedVanguard('');
+    }, 600);
+  };
+
   const prevTimeRef = useRef(timeRemaining);
   const hasPlayedHornRef = useRef(false);
-  const hasPlayedStartupRef = useRef(false);
+
 
   const sirenRef = useRef<HTMLAudioElement | null>(null);
   const tickRef = useRef<HTMLAudioElement | null>(null);
   // SOLD AUDIO REFS — Conditional routing (EXCLUSIVE)
   const sold7CroreRef = useRef<HTMLAudioElement | null>(null);    // EXACTLY 7 crores
-  const startupKBCRef = useRef<HTMLAudioElement | null>(null);    // Startup (once)
+
   const audioCtxRef = useRef<AudioContext | null>(null);          // Web Audio for default SOLD
 
   // Preload ALL audio on mount
@@ -103,16 +120,7 @@ export function AuctionStage({
     sold7Crore.volume = 0.9;
     sold7CroreRef.current = sold7Crore;
 
-    // Startup sound — KBC (plays once)
-    const startupKBC = new Audio('/kaun_banega_crorepati.mp3');
-    startupKBC.volume = 0.8;
-    startupKBCRef.current = startupKBC;
 
-    // Play startup sound ONCE when auction system initializes
-    if (!hasPlayedStartupRef.current) {
-      hasPlayedStartupRef.current = true;
-      startupKBC.play().catch(e => console.log('Startup sound failed:', e));
-    }
   }, []);
 
   useEffect(() => {
@@ -493,7 +501,16 @@ export function AuctionStage({
       {/* SOLD OVERLAY — Rendered to document.body via Portal */}
       {typeof document !== 'undefined' && createPortal(soldOverlay, document.body)}
 
-      <div className="glass-card-elevated rounded-2xl overflow-hidden animate-slide-up">
+      {typeof document !== 'undefined' && createPortal(soldOverlay, document.body)}
+
+      <div
+        className="glass-card-elevated rounded-2xl overflow-hidden animate-slide-up transition-all duration-500 ease-[cubic-bezier(0.25,0.1,0.25,1)]"
+        style={{
+          transform: isExitingUnsold ? 'translateY(40px) scale(0.96)' : 'translateY(0) scale(1)',
+          opacity: isExitingUnsold ? 0.6 : 1,
+          filter: isExitingUnsold ? 'grayscale(100%)' : 'none',
+        }}
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-primary/20 to-transparent px-6 py-4 border-b border-border/50">
           <div className="flex items-center justify-between">
@@ -660,11 +677,19 @@ export function AuctionStage({
                 <Button
                   onClick={handleConfirmSale}
                   disabled={!selectedVanguard || (selectedTeam && bidAmount > (selectedTeam.budget - selectedTeam.spent))}
-                  className="w-full h-14 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg uppercase tracking-wider glow-primary disabled:opacity-50 disabled:glow-none"
+                  className="flex-[2] h-14 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg uppercase tracking-wider glow-primary disabled:opacity-50 disabled:glow-none"
                 >
-                  <Gavel className="w-6 h-6 mr-3" />
+                  <Gavel className="w-6 h-6 mr-2" />
                   DECLARE SOLD
-                  <ChevronRight className="w-6 h-6 ml-3" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={handleMarkUnsold}
+                  className="flex-1 h-14 border-white/10 text-white/60 hover:text-white hover:bg-white/5 hover:border-white/20 uppercase tracking-widest font-bold transition-all leading-none flex items-center justify-center"
+                >
+                  <Ban className="w-5 h-5 mr-2" />
+                  MARK UNSOLD
                 </Button>
               </div>
               {/* Budget safety warning */}
@@ -674,6 +699,8 @@ export function AuctionStage({
                   <span>INSUFFICIENT FUNDS — {selectedTeam.name} has only {(selectedTeam.budget - selectedTeam.spent).toFixed(2)} CR remaining</span>
                 </div>
               )}
+
+
             </div>
           </div>
         </div>

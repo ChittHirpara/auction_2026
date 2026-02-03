@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Sparkles } from 'lucide-react';
+import { ArrowRight, Sparkles, Volume2, VolumeX } from 'lucide-react';
 
 /**
  * Landing — Premium Institutional Ceremony Screen
@@ -24,12 +24,49 @@ export default function Landing() {
     const navigate = useNavigate();
     const [isExiting, setIsExiting] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const [isMuted, setIsMuted] = useState(false);
 
     useEffect(() => {
         // Trigger loaded state after mount for staggered entrance
         const timer = setTimeout(() => setIsLoaded(true), 100);
-        return () => clearTimeout(timer);
+
+        // Audio Setup
+        const audio = new Audio('/kaun_banega_crorepati.mp3');
+        audio.loop = false;
+        audio.volume = 0.5;
+        audioRef.current = audio;
+
+        // Try to play immediately
+        const playPromise = audio.play();
+
+        if (playPromise !== undefined) {
+            playPromise.catch(() => {
+                // Auto-play was prevented
+                // Add one-time click listener to start audio
+                const handleInteraction = () => {
+                    audio.play();
+                    document.removeEventListener('click', handleInteraction);
+                    document.removeEventListener('keydown', handleInteraction);
+                };
+                document.addEventListener('click', handleInteraction);
+                document.addEventListener('keydown', handleInteraction);
+            });
+        }
+
+        return () => {
+            clearTimeout(timer);
+            audio.pause();
+            audio.src = '';
+        };
     }, []);
+
+    const toggleMute = () => {
+        if (audioRef.current) {
+            audioRef.current.muted = !isMuted;
+            setIsMuted(!isMuted);
+        }
+    };
 
     const handleStart = () => {
         setIsExiting(true);
@@ -364,6 +401,15 @@ export default function Landing() {
                     Authorized Personnel Only
                 </motion.p>
             </div>
+
+            {/* Audio Control */}
+            <button
+                onClick={toggleMute}
+                className="absolute top-6 right-6 z-50 text-white/50 hover:text-white transition-colors p-2"
+                title={isMuted ? "Unmute" : "Mute"}
+            >
+                {isMuted ? <VolumeX className="w-8 h-8" /> : <Volume2 className="w-8 h-8" />}
+            </button>
 
             {/* ━━━ CORNER ACCENTS — Premium framing ━━━ */}
             {['top-left', 'top-right', 'bottom-left', 'bottom-right'].map((pos, i) => (

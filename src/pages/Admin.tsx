@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 
-const ADMIN_PASSWORD = 'admin@2026';
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD;
 
 const Admin = () => {
     const [password, setPassword] = useState('');

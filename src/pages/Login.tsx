@@ -29,7 +29,7 @@ export default function Login() {
 
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
-        if (password === 'admin@2026') {
+        if (password === import.meta.env.VITE_ADMIN_PASSWORD) {
             // Begin authorization ceremony
             setAuthPhase('exiting');
             toast.success('Access Granted. Welcome Admin.');

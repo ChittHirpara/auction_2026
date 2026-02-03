@@ -11,6 +11,8 @@ interface AuctionContextType {
     timeRemaining: number;
     isTimerRunning: boolean;
     handleSale: (studentId: string, vanguardId: string, price: number) => void;
+    handleUnsold: (studentId: string) => void;
+    handleReturnFromUnsold: (studentId: string) => void;
     handleSkip: () => void;
     undoSale: (studentId: string) => void;
     updateSale: (studentId: string, newVanguardId: string, newPrice: number) => void;
@@ -80,6 +82,24 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
             setState(newState);
         } catch (err) {
             console.error('Sale failed:', err);
+        }
+    }, []);
+
+    const handleUnsold = useCallback((studentId: string) => {
+        try {
+            const newState = store.markAsUnsold(studentId);
+            setState(newState);
+        } catch (err) {
+            console.error('Mark as unsold failed:', err);
+        }
+    }, []);
+
+    const handleReturnFromUnsold = useCallback((studentId: string) => {
+        try {
+            const newState = store.returnFromUnsold(studentId);
+            setState(newState);
+        } catch (err) {
+            console.error('Return from unsold failed:', err);
         }
     }, []);
 
@@ -164,6 +184,8 @@ export const AuctionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         timeRemaining,
         isTimerRunning,
         handleSale,
+        handleUnsold,
+        handleReturnFromUnsold,
         handleSkip,
         undoSale,
         updateSale,

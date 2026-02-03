@@ -43,7 +43,7 @@ import { Vanguard } from '@/types/auction';
  * - NO handleSale, handleSkip, updateSale, undoSale imported
  */
 
-const CONTROLLER_PASSWORD = 'rmj@2024';
+const CONTROLLER_PASSWORD = import.meta.env.VITE_CONTROLLER_PASSWORD;
 const QUEUE_PREVIEW_COUNT = 8; // Show next 8 players
 
 const Controller = () => {
