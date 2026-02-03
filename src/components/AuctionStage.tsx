@@ -242,7 +242,7 @@ export function AuctionStage({
     setTimeout(() => {
       setShowSoldOverlay(false);
       setSoldDetails(null);
-      onStartTimer();
+      // Removed onStartTimer() to allow for manual timer start for the next student
     }, 3500);
   };
 
