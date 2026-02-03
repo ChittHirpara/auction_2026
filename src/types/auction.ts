@@ -2,7 +2,7 @@ export interface Student {
   id: string;
   grNumber: string;
   name: string;
-  status: 'available' | 'sold';
+  status: 'available' | 'sold' | 'unsold';
   soldTo?: string;
   soldPrice?: number;
 }

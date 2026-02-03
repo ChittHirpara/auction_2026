@@ -19,7 +19,7 @@ import { Student, Vanguard } from '@/types/auction';
 // ============================================================
 // STORAGE KEY - Version for future migrations
 // ============================================================
-const STORAGE_KEY = 'auction_state_v1';
+const STORAGE_KEY = 'auction_state_v3';
 const CHANNEL_NAME = 'auction_sync';
 
 // ============================================================
@@ -218,10 +218,10 @@ const RAW_STUDENTS: Omit<Student, 'status' | 'soldTo' | 'soldPrice'>[] = [
 ];
 
 const INITIAL_VANGUARDS: Vanguard[] = [
-    { id: 'v1', name: 'Vanguard Alpha', color: 'emerald', budget: 100, spent: 0, squad: [] },
-    { id: 'v2', name: 'Vanguard Omega', color: 'blue', budget: 100, spent: 0, squad: [] },
-    { id: 'v3', name: 'Vanguard Prime', color: 'amber', budget: 100, spent: 0, squad: [] },
-    { id: 'v4', name: 'Vanguard Nova', color: 'rose', budget: 100, spent: 0, squad: [] },
+    { id: 'v1', name: 'Terra', color: 'emerald', budget: 100, spent: 0, squad: [] },
+    { id: 'v2', name: 'Aqua', color: 'blue', budget: 100, spent: 0, squad: [] },
+    { id: 'v3', name: 'Aero', color: 'amber', budget: 100, spent: 0, squad: [] },
+    { id: 'v4', name: 'Ignis', color: 'rose', budget: 100, spent: 0, squad: [] },
 ];
 
 // ============================================================
@@ -398,6 +398,80 @@ export function confirmSale(studentId: string, vanguardId: string, price: number
     state.queue = state.queue.slice(1);
 
     // Reset timer (paused, ready for next)
+    state.timer = {
+        startedAt: null,
+        duration: TIMER_DURATION,
+        pausedRemaining: null,
+    };
+
+    saveState(state);
+    return state;
+}
+
+/**
+ * Mark current student as UNSOLD.
+ * Removes from queue, marks as unsold.
+ * Resets timer.
+ * NO money exchanged.
+ */
+export function markAsUnsold(studentId: string): PersistedState {
+    const state = loadState();
+    if (!state) throw new Error('No auction state');
+
+    // Validate: student must be queue[0]
+    if (state.queue[0] !== studentId) {
+        throw new Error('Can only mark current student (queue[0]) as unsold');
+    }
+
+    const student = state.students[studentId];
+    if (!student || student.status !== 'available') {
+        throw new Error('Student not available');
+    }
+
+    // Apply mutation
+    state.students[studentId] = {
+        ...student,
+        status: 'unsold',
+        soldTo: undefined,
+        soldPrice: undefined,
+    };
+
+    // Remove from queue
+    state.queue = state.queue.slice(1);
+
+    // Reset timer
+    state.timer = {
+        startedAt: null,
+        duration: TIMER_DURATION,
+        pausedRemaining: null,
+    };
+
+    saveState(state);
+    return state;
+}
+
+/**
+ * Return an UNSOLD student to the queue (available).
+ * Adds to END of queue.
+ */
+export function returnFromUnsold(studentId: string): PersistedState {
+    const state = loadState();
+    if (!state) throw new Error('No auction state');
+
+    const student = state.students[studentId];
+    if (!student || student.status !== 'unsold') {
+        throw new Error('Student must be unsold to return');
+    }
+
+    state.students[studentId] = {
+        ...student,
+        status: 'available',
+    };
+
+    // Add to FRONT of queue (Make active immediately)
+    state.queue = [studentId, ...state.queue];
+
+    // Reset timer
     state.timer = {
         startedAt: null,
         duration: TIMER_DURATION,

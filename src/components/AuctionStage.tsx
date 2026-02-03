@@ -1,4 +1,4 @@
-import { Gavel, User, Hash, ChevronRight, AlertCircle, Play, RotateCcw } from 'lucide-react';
+import { Gavel, User, Hash, ChevronRight, AlertCircle, Play, RotateCcw, Ban } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -45,6 +45,7 @@ interface AuctionStageProps {
   onStartTimer: () => void;
   onPauseTimer: () => void;
   onResetTimer: () => void;
+  onUnsold: (studentId: string) => void;
 }
 
 const BASE_PRICE = 0.25;
@@ -66,6 +67,7 @@ export function AuctionStage({
   onStartTimer,
   onPauseTimer,
   onResetTimer,
+  onUnsold,
 }: AuctionStageProps) {
   const [bidAmount, setBidAmount] = useState(BASE_PRICE);
   const [selectedVanguard, setSelectedVanguard] = useState<string>('');
@@ -74,16 +76,31 @@ export function AuctionStage({
   const [soldPhase, setSoldPhase] = useState<'lock' | 'declare' | 'release'>('lock');
   const [soldDetails, setSoldDetails] = useState<{ name: string; vanguard: string; price: number; color: string } | null>(null);
 
+  // UNSOLD ANIMATION STATE
+  const [isExitingUnsold, setIsExitingUnsold] = useState(false);
+
+  const handleMarkUnsold = () => {
+    if (!currentStudent) return;
+    setIsExitingUnsold(true);
+    // God-tier safe animation: wait for slide down then trigger data update
+    setTimeout(() => {
+      onUnsold(currentStudent.id);
+      setIsExitingUnsold(false);
+      setBidAmount(BASE_PRICE);
+      setSelectedVanguard('');
+    }, 600);
+  };
+
   const prevTimeRef = useRef(timeRemaining);
   const hasPlayedHornRef = useRef(false);
-  const hasPlayedStartupRef = useRef(false);
+
 
   const sirenRef = useRef<HTMLAudioElement | null>(null);
   const tickRef = useRef<HTMLAudioElement | null>(null);
-  // SOLD AUDIO REFS — Conditional routing
-  const soldDefaultRef = useRef<HTMLAudioElement | null>(null);
+  // SOLD AUDIO REFS — Conditional routing (EXCLUSIVE)
   const sold7CroreRef = useRef<HTMLAudioElement | null>(null);    // EXACTLY 7 crores
-  const startupKBCRef = useRef<HTMLAudioElement | null>(null);    // Startup (once)
+
+  const audioCtxRef = useRef<AudioContext | null>(null);          // Web Audio for default SOLD
 
   // Preload ALL audio on mount
   useEffect(() => {
@@ -97,25 +114,13 @@ export function AuctionStage({
     tick.volume = 0.4;
     tickRef.current = tick;
 
-    // SOLD sounds (from public folder)
-    const soldDefault = new Audio('/kaun_banega_crorepati.mp3');
-    soldDefault.volume = 0.8;
-    soldDefaultRef.current = soldDefault;
+    // 7 Crore special sound (from public folder)
 
     const sold7Crore = new Audio('/7_crore.mp3');
     sold7Crore.volume = 0.9;
     sold7CroreRef.current = sold7Crore;
 
-    // Startup sound — KBC (plays once)
-    const startupKBC = new Audio('/kaun_banega_crorepati.mp3');
-    startupKBC.volume = 0.8;
-    startupKBCRef.current = startupKBC;
 
-    // Play startup sound ONCE when auction system initializes
-    if (!hasPlayedStartupRef.current) {
-      hasPlayedStartupRef.current = true;
-      startupKBC.play().catch(e => console.log('Startup sound failed:', e));
-    }
   }, []);
 
   useEffect(() => {
@@ -187,20 +192,43 @@ export function AuctionStage({
     setSoldPhase('lock');
     setShowSoldOverlay(true);
 
-    // ━━━ SOLD AUDIO ROUTING ━━━
+    // ━━━ SOLD AUDIO ROUTING (EXCLUSIVE — ONE SOUND PER EVENT) ━━━
+    const playDefaultSOLDSound = () => {
+      // Programmatic gavel tone via Web Audio API
+      try {
+        if (!audioCtxRef.current) {
+          audioCtxRef.current = new AudioContext();
+        }
+        const ctx = audioCtxRef.current;
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 440; // Authoritative A4
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.4);
+      } catch (e) {
+        console.log('Default SOLD sound failed:', e);
+      }
+    };
+
     const playSOLDSound = (price: number) => {
-      // Special Sound: EXACTLY 7 crores
+      // EXCLUSIVE ROUTING: Exactly one sound per SOLD event
       if (price === 7) {
+        // Special Sound: EXACTLY 7 crores
         if (sold7CroreRef.current) {
           sold7CroreRef.current.currentTime = 0;
           sold7CroreRef.current.play().catch(e => console.log('7 Crore sound failed:', e));
         }
-      }
-
-      // Default Sold Sound (KBC Theme) plays for ALL sales
-      if (soldDefaultRef.current) {
-        soldDefaultRef.current.currentTime = 0;
-        soldDefaultRef.current.play().catch(e => console.log('Default sold sound failed:', e));
+      } else {
+        // Default SOLD sound for ALL other amounts
+        playDefaultSOLDSound();
       }
     };
 
@@ -443,7 +471,7 @@ export function AuctionStage({
                 {soldDetails.price.toFixed(2)}
               </span>
               <span style={{ fontSize: '1.5rem', fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                credits
+                CRORES
               </span>
             </motion.div>
           </motion.div>
@@ -473,7 +501,16 @@ export function AuctionStage({
       {/* SOLD OVERLAY — Rendered to document.body via Portal */}
       {typeof document !== 'undefined' && createPortal(soldOverlay, document.body)}
 
-      <div className="glass-card-elevated rounded-2xl overflow-hidden animate-slide-up">
+      {typeof document !== 'undefined' && createPortal(soldOverlay, document.body)}
+
+      <div
+        className="glass-card-elevated rounded-2xl overflow-hidden animate-slide-up transition-all duration-500 ease-[cubic-bezier(0.25,0.1,0.25,1)]"
+        style={{
+          transform: isExitingUnsold ? 'translateY(40px) scale(0.96)' : 'translateY(0) scale(1)',
+          opacity: isExitingUnsold ? 0.6 : 1,
+          filter: isExitingUnsold ? 'grayscale(100%)' : 'none',
+        }}
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-primary/20 to-transparent px-6 py-4 border-b border-border/50">
           <div className="flex items-center justify-between">
@@ -492,8 +529,8 @@ export function AuctionStage({
         </div>
 
         {/* Main Content */}
-        <div className="p-8">
-          <div className="grid lg:grid-cols-2 gap-8">
+        <div className="p-4 sm:p-6 lg:p-8">
+          <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
             {/* Student Info */}
             <div className="space-y-6">
               <div className="flex items-start gap-4">
@@ -516,10 +553,24 @@ export function AuctionStage({
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Base Price</p>
                   <p className="text-xl font-bold text-primary number-display">{BASE_PRICE} cr</p>
                 </div>
-                <div className={`glass-card rounded-lg px-4 py-3 flex-1 border-2 transition-colors ${displayTime <= 5 ? 'border-destructive/50 bg-destructive/10' : 'border-transparent'}`}>
+                <div className={`glass-card rounded-lg px-4 py-3 flex-1 border-2 transition-colors ${displayTime <= 3
+                  ? 'border-destructive bg-destructive/20'
+                  : displayTime <= 5
+                    ? 'border-destructive/50 bg-destructive/10'
+                    : displayTime <= 10
+                      ? 'border-amber-500/50 bg-amber-500/10'
+                      : 'border-transparent'
+                  }`}>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Timer</p>
                   <div className="flex items-center justify-between">
-                    <p className={`text-xl font-bold number-display ${displayTime <= 5 ? 'text-destructive animate-pulse' : 'text-foreground'}`}>
+                    <p className={`text-xl font-bold number-display ${displayTime <= 3
+                      ? 'text-destructive'
+                      : displayTime <= 5
+                        ? 'text-destructive animate-pulse-slow'
+                        : displayTime <= 10
+                          ? 'text-amber-500'
+                          : 'text-foreground'
+                      }`}>
                       {displayTime}s
                     </p>
                     <div className="flex gap-1">
@@ -545,24 +596,39 @@ export function AuctionStage({
             <div className="space-y-6">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                  Select Vanguard
+                  WINNING HOUSE
                 </label>
                 <Select value={selectedVanguard} onValueChange={setSelectedVanguard}>
                   <SelectTrigger className="h-14 bg-secondary border-border text-lg">
-                    <SelectValue placeholder="Choose winning team..." />
+                    <SelectValue placeholder="DECLARE THE HOUSE" />
                   </SelectTrigger>
                   <SelectContent>
-                    {vanguards.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        <div className="flex items-center gap-3">
-                          <div className={`w-3 h-3 rounded-full ${getVanguardColor(v.color)}`} />
-                          <span>{v.name}</span>
-                          <span className="text-muted-foreground">
-                            ({(v.budget - v.spent).toFixed(2)} cr left)
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {vanguards.map((v) => {
+                      const remaining = v.budget - v.spent;
+                      const insufficientFunds = remaining < bidAmount;
+                      return (
+                        <SelectItem
+                          key={v.id}
+                          value={v.id}
+                          disabled={insufficientFunds}
+                          className={insufficientFunds ? 'opacity-50' : ''}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-3 h-3 rounded-full ${getVanguardColor(v.color)}`} />
+                            <span>{v.name}</span>
+                            {insufficientFunds ? (
+                              <span className="text-destructive font-bold text-xs">
+                                INSUFFICIENT FUNDS
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                ({remaining.toFixed(2)} cr left)
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -570,19 +636,21 @@ export function AuctionStage({
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                    Final Price
+                    WINNING BID
                   </label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      value={bidAmount}
-                      onChange={(e) => setBidAmount(Math.max(0, Number(e.target.value)))}
-                      className="w-24 h-10 text-center text-lg font-bold bg-secondary border-border number-display"
-                      min={0}
-                      step={0.05}
-                    />
-                    <span className="text-muted-foreground font-medium">cr</span>
-                  </div>
+                </div>
+                {/* BID VISUAL DOMINANCE — Largest element in controls */}
+                <div className="flex items-center justify-center gap-3 py-4">
+                  <Input
+                    type="number"
+                    value={bidAmount}
+                    onChange={(e) => setBidAmount(Math.max(0, Number(e.target.value)))}
+                    className="w-28 h-12 text-center text-2xl font-black bg-secondary border-2 border-primary/50 number-display text-primary"
+                    min={0}
+                    step={0.05}
+                    style={{ textShadow: '0 0 20px hsl(43 74% 49% / 0.3)' }}
+                  />
+                  <span className="text-xl font-bold text-foreground uppercase">CRORES</span>
                 </div>
                 <Slider
                   value={[bidAmount]}
@@ -608,14 +676,31 @@ export function AuctionStage({
               <div className="flex gap-3">
                 <Button
                   onClick={handleConfirmSale}
-                  disabled={!selectedVanguard}
-                  className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold glow-primary disabled:opacity-50 disabled:glow-none"
+                  disabled={!selectedVanguard || (selectedTeam && bidAmount > (selectedTeam.budget - selectedTeam.spent))}
+                  className="flex-[2] h-14 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg uppercase tracking-wider glow-primary disabled:opacity-50 disabled:glow-none"
                 >
-                  <Gavel className="w-5 h-5 mr-2" />
-                  Confirm Sale
-                  <ChevronRight className="w-5 h-5 ml-2" />
+                  <Gavel className="w-6 h-6 mr-2" />
+                  DECLARE SOLD
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={handleMarkUnsold}
+                  className="flex-1 h-14 border-white/10 text-white/60 hover:text-white hover:bg-white/5 hover:border-white/20 uppercase tracking-widest font-bold transition-all leading-none flex items-center justify-center"
+                >
+                  <Ban className="w-5 h-5 mr-2" />
+                  MARK UNSOLD
                 </Button>
               </div>
+              {/* Budget safety warning */}
+              {selectedTeam && bidAmount > (selectedTeam.budget - selectedTeam.spent) && (
+                <div className="flex items-center gap-2 text-destructive text-sm font-bold">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>INSUFFICIENT FUNDS — {selectedTeam.name} has only {(selectedTeam.budget - selectedTeam.spent).toFixed(2)} CR remaining</span>
+                </div>
+              )}
+
+
             </div>
           </div>
         </div>
