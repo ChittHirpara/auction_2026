@@ -299,5 +299,5 @@ Before going live:
 </p>
 
 <p align="center">
-  Made with 🖤 and ✨ for live institutional events
+  Made By Hirpara Chitt & Rachit Kakkad
 </p>
